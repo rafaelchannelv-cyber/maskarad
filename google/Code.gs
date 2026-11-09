@@ -31,13 +31,34 @@ function doPost(e) {
   var no;
   try {
     var sh = sheet();
-    no = Math.max(sh.getLastRow(), 1); // строка 1 — заголовок, поэтому № = число строк
+    // Номер участника не повторяется, даже если строки удаляли: счётчик хранится в свойствах скрипта.
+    var props = PropertiesService.getScriptProperties();
+    var target = nextRow(sh);
+    no = Math.max(Number(props.getProperty('LAST_NO') || 0), maxNo(sh)) + 1;
+    props.setProperty('LAST_NO', String(no));
     var bd = row.birthday.split('-').reverse().join('.');
-    sh.appendRow([no, new Date(), safe(row.name), row.continent, age, bd, safe(row.lastname), safe(row.phone), safe(row.email), CONSENT_TEXT]);
+    // Пишем строго в колонки A–J следующей пустой строки.
+    var range = sh.getRange(target, 1, 1, HEAD.length);
+    range.setNumberFormats([['0', 'dd.MM.yyyy HH:mm', '@', '@', '0', '@', '@', '@', '@', '@']]);
+    range.setValues([[no, new Date(), safe(row.name), row.continent, age, bd, safe(row.lastname), safe(row.phone), safe(row.email), CONSENT_TEXT]]);
   } finally { lock.releaseLock(); }
 
   announce(row.name, row.continent, age, no);
   return out({ ok: true, public: { name: row.name, continent: row.continent, age: age, number: no } });
+}
+
+// Первая пустая строка по колонке A (№), ниже последней заполненной.
+function nextRow(sh) {
+  var last = sh.getLastRow();
+  if (last < 2) return 2;
+  var col = sh.getRange(2, 1, last - 1, 1).getValues();
+  for (var i = col.length - 1; i >= 0; i--) if (col[i][0] !== '' && col[i][0] !== null) return i + 3;
+  return 2;
+}
+function maxNo(sh) {
+  var last = sh.getLastRow();
+  if (last < 2) return 0;
+  return sh.getRange(2, 1, last - 1, 1).getValues().reduce(function (m, r) { var n = Number(r[0]); return n > m ? n : m; }, 0);
 }
 
 function sheet() {
@@ -77,7 +98,7 @@ function test() {
 
 function out(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
 function clean(v, max) { return String(v == null ? '' : v).trim().replace(/\s+/g, ' ').slice(0, max); }
-function safe(v) { return /^[=+\-@]/.test(v) ? "'" + v : v; } // чтобы «+7…» и «=…» не стали формулами
+function safe(v) { return /^=/.test(v) ? "'" + v : v; } // чтобы «=…» не стало формулой
 function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 function years(n) { var a = n % 100, b = n % 10; if (a >= 11 && a <= 14) return 'лет'; return b === 1 ? 'год' : (b >= 2 && b <= 4 ? 'года' : 'лет'); }
 function ageOf(iso) {
