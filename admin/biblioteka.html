@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>MaskShow · Библиотека анкет</title>
+<style>
+  :root{--bg:#0b0b12;--card:#151522;--line:#2a2a3d;--txt:#ececf4;--dim:#9a9ab0;--green:#39ff88;--gold:#ffc83d;--red:#ff4d5e}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:1200px;margin:0 auto;padding:24px 16px 48px}
+  h1{margin:0 0 4px;font:800 clamp(28px,5vw,44px)/1 "Arial Narrow","Roboto Condensed",sans-serif;letter-spacing:.02em;text-transform:uppercase}
+  h1 .m{color:var(--green)} h1 .s{color:var(--gold)}
+  .sub{color:var(--dim);margin:0 0 20px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:16px}
+  .row{display:flex;flex-wrap:wrap;gap:10px;align-items:end}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--dim);flex:1 1 220px}
+  input,select{background:#0e0e18;color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:9px 10px;font:inherit}
+  button{background:var(--green);color:#06120b;border:0;border-radius:8px;padding:10px 16px;font:700 14px/1 inherit;cursor:pointer;text-transform:uppercase;letter-spacing:.04em}
+  button.ghost{background:transparent;color:var(--txt);border:1px solid var(--line)}
+  button.del{background:transparent;color:var(--red);border:1px solid #4a2030;padding:6px 10px;font-size:12px}
+  .stats{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
+  .chip{background:#0e0e18;border:1px solid var(--line);border-radius:999px;padding:4px 12px;font-size:13px}
+  .chip b{color:var(--gold)}
+  .msg{min-height:1.4em;color:var(--red);margin:8px 0 0}
+  .tbl{overflow:auto;border:1px solid var(--line);border-radius:12px}
+  table{border-collapse:collapse;width:100%;min-width:900px}
+  th,td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;font-size:14px}
+  th{position:sticky;top:0;background:#1b1b2b;color:var(--dim);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.05em}
+  td.c{color:var(--red)} td.n{color:var(--green);font-weight:600}
+  tr:hover td{background:#191928}
+  .empty{padding:24px;text-align:center;color:var(--dim)}
+  [hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1><span class="m">Mask</span><span class="s">Show</span> · библиотека анкет</h1>
+  <p class="sub">Закрытая страница для организаторов. Не публикуйте ссылку и пароль.</p>
+
+  <form class="card" id="login">
+    <div class="row">
+      <label>Адрес облачной функции
+        <input id="url" type="url" placeholder="https://functions.yandexcloud.net/…" required>
+      </label>
+      <label>Пароль библиотеки
+        <input id="token" type="password" autocomplete="current-password" required>
+      </label>
+      <button type="submit">Открыть</button>
+    </div>
+    <p class="msg" id="msg" role="alert"></p>
+  </form>
+
+  <section id="lib" hidden>
+    <div class="card">
+      <div class="row">
+        <label>Поиск по №, имени, фамилии, телефону, e-mail
+          <input id="q" type="search" placeholder="Например, Алина">
+        </label>
+        <label style="flex:0 1 220px">Континент
+          <select id="fc"><option value="">Все</option></select>
+        </label>
+        <button type="button" class="ghost" id="reload">Обновить</button>
+        <button type="button" id="csv">Скачать CSV</button>
+      </div>
+    </div>
+    <div class="stats" id="stats"></div>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>№</th><th>Дата</th><th>Имя</th><th>Фамилия</th><th>Континент</th><th>Возраст</th><th>День рождения</th><th>Мобильный</th><th>E-mail</th><th></th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </section>
+</div>
+<script>
+(()=>{
+  const $=id=>document.getElementById(id);
+  const CONTS=["Европа","Азия","Африка","Северная Америка","Южная Америка","Австралия и Океания"];
+  CONTS.forEach(c=>$("fc").add(new Option(c,c)));
+  $("url").value=localStorage.getItem("maskshow-fn")||"";
+  let all=[];
+  const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  const age=iso=>{const b=new Date(iso+"T00:00:00");if(isNaN(b))return"";const t=new Date();let a=t.getFullYear()-b.getFullYear();if(t.getMonth()<b.getMonth()||(t.getMonth()===b.getMonth()&&t.getDate()<b.getDate()))a--;return a};
+  const when=iso=>{const d=new Date(iso);return isNaN(d)?"":d.toLocaleString("ru-RU",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"})};
+  const bd=iso=>iso?iso.split("-").reverse().join("."):"";
+
+  async function call(body){
+    const r=await fetch($("url").value.trim(),{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({...body,token:$("token").value})});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok||!j.ok)throw new Error(j.error||"Ошибка сервера ("+r.status+")");
+    return j;
+  }
+  async function load(){
+    $("msg").textContent="Загружаем…";
+    try{
+      const j=await call({action:"list"});
+      all=(j.rows||[]).sort((a,b)=>a.created<b.created?1:-1);all.forEach((r,i)=>r.no=all.length-i);$("msg").textContent="";$("lib").hidden=false;
+      localStorage.setItem("maskshow-fn",$("url").value.trim());
+      render();
+    }catch(e){$("msg").textContent=e.message==="Failed to fetch"?"Нет связи с функцией, проверьте адрес.":e.message}
+  }
+  function filtered(){
+    const q=$("q").value.trim().toLowerCase().replace(/^№\s*/,""),c=$("fc").value;
+    return all.filter(r=>(!c||r.continent===c)&&(!q||(String(r.no)===q||[r.name,r.lastname,r.phone,r.email].join(" ").toLowerCase().includes(q))));
+  }
+  function render(){
+    const list=filtered();
+    const by={};all.forEach(r=>by[r.continent]=(by[r.continent]||0)+1);
+    $("stats").innerHTML=`<span class="chip">Всего анкет: <b>${all.length}</b></span>`+(list.length!==all.length?`<span class="chip">Показано: <b>${list.length}</b></span>`:"")+
+      CONTS.filter(c=>by[c]).map(c=>`<span class="chip">${esc(c)}: <b>${by[c]}</b></span>`).join("");
+    $("rows").innerHTML=list.length?list.map(r=>`<tr>
+      <td>${r.no}</td><td>${esc(when(r.created))}</td><td class="n">${esc(r.name)}</td><td>${esc(r.lastname)}</td><td class="c">${esc(r.continent)}</td>
+      <td>${esc(age(r.birthday))}</td><td>${esc(bd(r.birthday))}</td>
+      <td>${r.phone?`<a href="tel:${esc(r.phone)}" style="color:inherit">${esc(r.phone)}</a>`:""}</td>
+      <td>${r.email?`<a href="mailto:${esc(r.email)}" style="color:inherit">${esc(r.email)}</a>`:""}</td>
+      <td><button class="del" data-id="${esc(r.id)}" title="Удалить анкету (например, по просьбе участника)">Удалить</button></td></tr>`).join("")
+      :`<tr><td colspan="10" class="empty">${all.length?"Ничего не найдено":"Анкет пока нет"}</td></tr>`;
+  }
+  $("login").addEventListener("submit",e=>{e.preventDefault();load()});
+  $("reload").addEventListener("click",load);
+  $("q").addEventListener("input",render);
+  $("fc").addEventListener("change",render);
+  $("rows").addEventListener("click",async e=>{
+    const b=e.target.closest(".del");if(!b)return;
+    const r=all.find(x=>x.id===b.dataset.id);
+    if(!confirm(`Удалить анкету «${r.name} ${r.lastname||""}» навсегда?`))return;
+    try{await call({action:"delete",id:r.id});all=all.filter(x=>x!==r);render()}catch(err){alert(err.message)}
+  });
+  $("csv").addEventListener("click",()=>{
+    const head=["№","Дата","Имя","Фамилия","Континент","Возраст","День рождения","Мобильный","E-mail","Согласие"];
+    const cell=v=>{v=String(v??"");if(/^[=+\-@]/.test(v))v="'"+v;return '"'+v.replace(/"/g,'""')+'"'};
+    const lines=[head,...filtered().map(r=>[r.no,when(r.created),r.name,r.lastname,r.continent,age(r.birthday),bd(r.birthday),r.phone,r.email,r.consent])].map(a=>a.map(cell).join(";"));
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(new Blob(["﻿"+lines.join("\r\n")],{type:"text/csv;charset=utf-8"}));
+    a.download="maskshow-anketa-"+new Date().toISOString().slice(0,10)+".csv";a.click();
+  });
+})();
+</script>
+</body>
+</html>

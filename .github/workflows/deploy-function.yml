@@ -1,0 +1,39 @@
+# Обновляет облачную функцию в Яндекс Облаке при изменениях в папке function/.
+# Нужны секреты репозитория (Settings → Secrets and variables → Actions):
+#   YC_SA_JSON_KEY  — авторизованный JSON-ключ сервисного аккаунта с ролью functions.editor (и iam.serviceAccounts.user)
+#   YC_FOLDER_ID    — ID каталога в Яндекс Облаке
+#   YC_SA_ID        — ID сервисного аккаунта функции (maskshow-fn)
+#   YDB_ENDPOINT, ADMIN_TOKEN, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+# Переменная репозитория (vars) ALLOWED_ORIGIN — адрес сайта, например https://rafaelchannelv-cyber.github.io
+name: Deploy function
+on:
+  push:
+    branches: [main]
+    paths: ["function/**", ".github/workflows/deploy-function.yml"]
+  workflow_dispatch:
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ vars.DEPLOY_FUNCTION == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: yc-actions/yc-sls-function@v2
+        with:
+          yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_KEY }}
+          folder-id: ${{ secrets.YC_FOLDER_ID }}
+          function-name: maskshow-anketa
+          runtime: nodejs18
+          entrypoint: index.handler
+          memory: 128Mb
+          execution-timeout: 10
+          service-account: ${{ secrets.YC_SA_ID }}
+          source-root: ./function
+          include: |
+            index.js
+            package.json
+          environment: |
+            YDB_ENDPOINT=${{ secrets.YDB_ENDPOINT }}
+            ADMIN_TOKEN=${{ secrets.ADMIN_TOKEN }}
+            TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
+            TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}
+            ALLOWED_ORIGIN=${{ vars.ALLOWED_ORIGIN }}
